@@ -15,16 +15,23 @@ const createProduct = async (req, res, next) => {
 
 const getProducts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, search, status } = req.query;
+    const { page = 1, limit = 10, search, status, category, sort } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const db = getDb();
     let where = 'WHERE store_id = ?';
     const params = [req.params.id];
-    if (search) { where += ' AND name LIKE ?'; params.push(`%${search}%`); }
+    if (search) { where += ' AND (name LIKE ? OR sku LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
     if (status) { where += ' AND status = ?'; params.push(status); }
-    const items = db.prepare(`SELECT * FROM products ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), offset);
+    if (category) { where += ' AND category = ?'; params.push(category); }
+    let orderBy = 'ORDER BY created_at DESC';
+    if (sort === 'name_asc') orderBy = 'ORDER BY name ASC';
+    if (sort === 'name_desc') orderBy = 'ORDER BY name DESC';
+    if (sort === 'price_asc') orderBy = 'ORDER BY price ASC';
+    if (sort === 'price_desc') orderBy = 'ORDER BY price DESC';
+    const items = db.prepare(`SELECT * FROM products ${where} ${orderBy} LIMIT ? OFFSET ?`).all(...params, Number(limit), offset);
     const total = db.prepare(`SELECT COUNT(*) as c FROM products ${where}`).get(...params).c;
-    return success(res, { items, total, page: Number(page), limit: Number(limit) });
+    const totalAll = db.prepare('SELECT COUNT(*) as c FROM products WHERE store_id = ?').get(req.params.id).c;
+    return success(res, { items, total, total_all: totalAll, page: Number(page), limit: Number(limit) });
   } catch (err) { next(err); }
 };
 
@@ -50,4 +57,28 @@ const deleteProduct = async (req, res, next) => {
   catch (err) { next(err); }
 };
 
-module.exports = { createProduct, getProducts, getProduct, updateProduct, deleteProduct };
+const updateProductAvailability = async (req, res, next) => {
+  try {
+    const { availability } = req.body;
+    const db = getDb();
+    const p = db.prepare('SELECT * FROM products WHERE id = ? AND store_id = ?').get(req.params.productId, req.params.id);
+    if (!p) return notFound(res);
+    let desc = {};
+    try { desc = JSON.parse(p.description || '{}'); } catch {}
+    desc.availability = availability;
+    db.prepare("UPDATE products SET description = ?, updated_at = datetime('now') WHERE id = ?").run(JSON.stringify(desc), req.params.productId);
+    return success(res, db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.productId), 'Ketersediaan diperbarui');
+  } catch (err) { next(err); }
+};
+
+const getProductInventory = async (req, res, next) => {
+  try {
+    const db = getDb();
+    const p = db.prepare('SELECT id, name, sku, stock, category FROM products WHERE id = ? AND store_id = ?').get(req.params.productId, req.params.id);
+    if (!p) return notFound(res);
+    const history = db.prepare('SELECT * FROM inventory_history WHERE product_id = ? ORDER BY created_at DESC LIMIT 10').all(req.params.productId);
+    return success(res, { product: p, history });
+  } catch (err) { next(err); }
+};
+
+module.exports = { createProduct, getProducts, getProduct, updateProduct, deleteProduct, updateProductAvailability, getProductInventory };

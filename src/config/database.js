@@ -173,6 +173,16 @@ function initTables() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS inventory_history (
+      id TEXT PRIMARY KEY,
+      store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      change INTEGER NOT NULL,
+      stock_after INTEGER NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS store_settings (
       id TEXT PRIMARY KEY,
       store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
