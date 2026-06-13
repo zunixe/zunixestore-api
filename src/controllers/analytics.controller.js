@@ -12,11 +12,13 @@ const getAnalyticsSummary = async (req, res, next) => {
     const { c: totalOrders } = db.prepare("SELECT COUNT(*) as c FROM orders WHERE store_id = ? AND created_at >= ?").get(req.params.id, dateFilter);
     const { c: totalProducts } = db.prepare('SELECT COUNT(*) as c FROM products WHERE store_id = ?').get(req.params.id);
     const { c: totalCustomers } = db.prepare('SELECT COUNT(*) as c FROM customers WHERE store_id = ?').get(req.params.id);
+    const visitors = analytics.reduce((s,a) => s+(a.visitors||0), 0);
+    const totalRev = analytics.reduce((s,a) => s+(a.revenue||0), 0);
+    const conversion_rate = visitors > 0 ? Number(((totalOrders / visitors) * 100).toFixed(2)) : 0;
     return success(res, {
-      visitors: analytics.reduce((s,a) => s+(a.visitors||0), 0),
-      orders: totalOrders, revenue: analytics.reduce((s,a) => s+(a.revenue||0), 0),
+      visitors, orders: totalOrders, revenue: totalRev,
       total_products: totalProducts, total_customers: totalCustomers,
-      daily: analytics,
+      conversion_rate, daily: analytics,
     });
   } catch (err) { next(err); }
 };
