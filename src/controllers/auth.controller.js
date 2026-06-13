@@ -69,7 +69,7 @@ const refresh = async (req, res, next) => {
 
 const me = async (req, res) => {
   const db = getDb();
-  const user = db.prepare('SELECT id, email, full_name, avatar_url, phone, role, created_at FROM profiles WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, email, full_name, avatar_url, phone, role, ktp_verified, phone_verified, created_at FROM profiles WHERE id = ?').get(req.user.id);
   return success(res, user);
 };
 
@@ -90,4 +90,61 @@ const updateProfile = async (req, res, next) => {
 
 const logout = async (req, res) => success(res, null, 'Logout berhasil');
 
-module.exports = { register, login, refresh, logout, me, updateProfile };
+const setPin = async (req, res, next) => {
+  try {
+    const { old_pin, new_pin } = req.body;
+    if (!new_pin || new_pin.length < 4 || new_pin.length > 6) {
+      return badRequest(res, 'PIN harus 4-6 digit');
+    }
+
+    const db = getDb();
+    const profile = db.prepare('SELECT pin_hash FROM profiles WHERE id = ?').get(req.user.id);
+
+    if (profile.pin_hash) {
+      if (!old_pin) return badRequest(res, 'PIN lama wajib diisi');
+      if (!bcrypt.compareSync(old_pin, profile.pin_hash)) {
+        return badRequest(res, 'PIN lama salah');
+      }
+    }
+
+    const hash = bcrypt.hashSync(new_pin, 10);
+    db.prepare('UPDATE profiles SET pin_hash = ? WHERE id = ?').run(hash, req.user.id);
+    return success(res, null, 'PIN berhasil diubah');
+  } catch (err) { next(err); }
+};
+
+const verifyPin = async (req, res, next) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return badRequest(res, 'PIN wajib diisi');
+
+    const db = getDb();
+    const profile = db.prepare('SELECT pin_hash FROM profiles WHERE id = ?').get(req.user.id);
+
+    if (!profile.pin_hash) return badRequest(res, 'PIN belum diatur');
+    if (!bcrypt.compareSync(pin, profile.pin_hash)) {
+      return badRequest(res, 'PIN salah');
+    }
+
+    return success(res, { verified: true }, 'PIN benar');
+  } catch (err) { next(err); }
+};
+
+const deleteAccount = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!password) return badRequest(res, 'Password wajib diisi');
+
+    const db = getDb();
+    const profile = db.prepare('SELECT password_hash FROM profiles WHERE id = ?').get(req.user.id);
+
+    if (!bcrypt.compareSync(password, profile.password_hash)) {
+      return badRequest(res, 'Password salah');
+    }
+
+    db.prepare('DELETE FROM profiles WHERE id = ?').run(req.user.id);
+    return success(res, null, 'Akun berhasil dihapus');
+  } catch (err) { next(err); }
+};
+
+module.exports = { register, login, refresh, logout, me, updateProfile, setPin, verifyPin, deleteAccount };

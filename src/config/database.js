@@ -11,9 +11,19 @@ function getDb() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initTables();
+    migrate();
     seedData();
   }
   return db;
+}
+
+function migrate() {
+  try { db.exec('ALTER TABLE profiles ADD COLUMN pin_hash TEXT'); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN ktp_verified INTEGER DEFAULT 0"); } catch (e) {}
+  try { db.exec('ALTER TABLE profiles ADD COLUMN language TEXT DEFAULT "id"'); } catch (e) {}
+  try { db.exec('ALTER TABLE profiles ADD COLUMN push_enabled INTEGER DEFAULT 1'); } catch (e) {}
+  try { db.exec('ALTER TABLE profiles ADD COLUMN notif_prefs TEXT DEFAULT \'{}\''); } catch (e) {}
+  try { db.exec('ALTER TABLE profiles ADD COLUMN phone_verified INTEGER DEFAULT 0'); } catch (e) {}
 }
 
 function initTables() {

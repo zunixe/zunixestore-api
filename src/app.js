@@ -16,6 +16,9 @@ const analyticsRoutes = require('./routes/analytics.routes');
 const themeRoutes = require('./routes/theme.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const phoneRoutes = require('./routes/phone.routes');
 
 const errorHandler = require('./middleware/error.middleware');
 
@@ -28,6 +31,7 @@ app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 app.get('/', (req, res) => {
   res.json({ name: 'ZunixeStore API', version: '1.0.0', database: 'SQLite', status: 'running' });
@@ -49,6 +53,9 @@ app.use('/api/stores/:id/analytics', analyticsRoutes);
 app.use('/api/stores/:id/theme', themeRoutes);
 app.use('/api/stores/:id/settings', settingsRoutes);
 app.use('/api/stores/:id/subscription', subscriptionRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/auth/phone', phoneRoutes);
 
 app.use(errorHandler);
 
