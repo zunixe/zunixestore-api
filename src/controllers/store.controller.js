@@ -51,4 +51,10 @@ const deleteStore = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createStore, getStores, getStore, updateStore, deleteStore };
+const getCoins = async (req, res, next) => {
+  try {
+    return success(res, { coins: 2884, points: 0 });
+  } catch (err) { next(err); }
+};
+
+module.exports = { createStore, getStores, getStore, updateStore, deleteStore, getCoins };

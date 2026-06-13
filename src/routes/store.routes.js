@@ -9,5 +9,6 @@ router.get('/', store.getStores);
 router.get('/:id', store.getStore);
 router.put('/:id', store.updateStore);
 router.delete('/:id', store.deleteStore);
+router.get('/:id/coins', store.getCoins);
 
 module.exports = router;
