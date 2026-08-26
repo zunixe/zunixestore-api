@@ -1,5 +1,7 @@
 const { getDb, uuid } = require('../config/database');
-const { success, created, error, notFound } = require('../utils/response');
+const { success, created, error, notFound, badRequest } = require('../utils/response');
+
+const DEFAULT_SOURCE = process.env.ZUNIXECORP_PRODUCTS_URL || 'http://localhost:3000/api/bridge/store-products?shop=default&limit=100';
 
 const createProduct = async (req, res, next) => {
   try {
@@ -81,4 +83,77 @@ const getProductInventory = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createProduct, getProducts, getProduct, updateProduct, deleteProduct, updateProductAvailability, getProductInventory };
+const syncShopee = async (req, res, next) => {
+  try {
+    const { source, products } = req.body;
+    const db = getDb();
+    let items = products;
+
+    if (!items && source) {
+      const resp = await fetch(source);
+      if (!resp.ok) return error(res, `Gagal mengambil produk dari sumber (${resp.status})`, 502);
+      const data = await resp.json();
+      items = data.items || [];
+    }
+
+    if (!Array.isArray(items)) return badRequest(res, 'products harus berupa array');
+    if (items.length === 0) return success(res, { synced: 0, created: 0, updated: 0, skipped: 0 }, 'Tidak ada produk untuk disinkronkan');
+
+    const store = db.prepare('SELECT id FROM stores WHERE id = ?').get(req.params.id);
+    if (!store) return notFound(res, 'Toko tidak ditemukan');
+
+    const findSku = db.prepare('SELECT id, store_id FROM products WHERE store_id = ? AND sku = ?');
+    const upsert = db.prepare(`INSERT INTO products (id, store_id, sku, name, description, price, stock, status, image_urls, category, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, price=excluded.price, stock=excluded.stock, image_urls=excluded.image_urls, category=excluded.category, status='published', updated_at=datetime('now')`);
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    const tx = db.transaction(() => {
+      for (const p of items) {
+        const sku = String(p.sku || p.itemId || p.id || '');
+        const name = String(p.name || p.itemName || '').trim();
+        if (!sku || !name) { skipped++; continue; }
+
+        const price = Math.round(Number(p.price || p.jual || 0));
+        const stock = Math.max(0, Math.round(Number(p.stock || p.totalStock || 0)));
+        const category = String(p.category || '');
+
+        let imageList = [];
+        if (Array.isArray(p.imageList)) imageList = p.imageList.filter(Boolean);
+        else if (p.imageUrl) imageList = [p.imageUrl];
+        if (imageList.length === 0 && Array.isArray(p.images)) imageList = p.images.filter(Boolean);
+
+        const images = imageList.map((u) => (typeof u === 'string' && u.startsWith('http') ? u : `https://cf.shopee.co.id/file/${u}`));
+        const description = JSON.stringify({ source: 'shopee', shopeeItemId: p.itemId || p.id, seoTitle: p.seoTitle || '', models: p.models || [] });
+
+        const existing = findSku.get(req.params.id, sku);
+        if (existing) {
+          db.prepare(`UPDATE products SET name=?, description=?, price=?, stock=?, image_urls=?, category=?, status='published', updated_at=datetime('now') WHERE id=?`)
+            .run(name, description, price, stock, JSON.stringify(images), category, existing.id);
+          updated++;
+        } else {
+          upsert.run(uuid(), req.params.id, sku, name, description, price, stock, 'published', JSON.stringify(images), category);
+          created++;
+        }
+      }
+    });
+    tx();
+
+    return success(res, { synced: created + updated, created, updated, skipped, storeId: req.params.id }, 'Sinkronisasi produk selesai');
+  } catch (err) { next(err); }
+};
+
+const clearSyncedProducts = async (req, res, next) => {
+  try {
+    const db = getDb();
+    const store = db.prepare('SELECT id FROM stores WHERE id = ?').get(req.params.id);
+    if (!store) return notFound(res, 'Toko tidak ditemukan');
+    const result = db.prepare("DELETE FROM products WHERE store_id = ? AND description LIKE '%shopee%'").run(req.params.id);
+    return success(res, { deleted: result.changes }, 'Produk sinkron dihapus');
+  } catch (err) { next(err); }
+};
+
+module.exports = { createProduct, getProducts, getProduct, updateProduct, deleteProduct, updateProductAvailability, getProductInventory, syncShopee, clearSyncedProducts };

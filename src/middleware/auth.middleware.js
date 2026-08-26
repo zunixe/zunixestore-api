@@ -25,4 +25,25 @@ const authenticate = (req, res, next) => {
   }
 };
 
-module.exports = { authenticate, JWT_SECRET };
+const authenticateOptional = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      req.user = null;
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, email, full_name, role FROM profiles WHERE id = ?').get(decoded.sub);
+    req.user = user || null;
+    next();
+  } catch {
+    req.user = null;
+    next();
+  }
+};
+
+module.exports = { authenticate, authenticateOptional, JWT_SECRET };

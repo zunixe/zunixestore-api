@@ -19,6 +19,12 @@ const subscriptionRoutes = require('./routes/subscription.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const phoneRoutes = require('./routes/phone.routes');
+const publicRoutes = require('./routes/public.routes');
+const publicAuthRoutes = require('./routes/public-auth.routes');
+const publicOrderRoutes = require('./routes/public-order.routes');
+const shippingRoutes = require('./routes/shipping.routes');
+const paymentRoutes = require('./routes/payment.routes');
+const publicCartRoutes = require('./routes/public-cart.routes');
 
 const errorHandler = require('./middleware/error.middleware');
 
@@ -30,7 +36,7 @@ getDb();
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static('uploads'));
 
 app.get('/', (req, res) => {
@@ -56,6 +62,12 @@ app.use('/api/stores/:id/subscription', subscriptionRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/auth/phone', phoneRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/public/auth', publicAuthRoutes);
+app.use('/api/public/orders', publicOrderRoutes);
+app.use('/api/public/cart', publicCartRoutes);
+app.use('/api/public/shipping', shippingRoutes);
+app.use('/api/payment', paymentRoutes);
 
 app.use(errorHandler);
 

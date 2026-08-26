@@ -24,6 +24,8 @@ function migrate() {
   try { db.exec('ALTER TABLE profiles ADD COLUMN push_enabled INTEGER DEFAULT 1'); } catch (e) {}
   try { db.exec('ALTER TABLE profiles ADD COLUMN notif_prefs TEXT DEFAULT \'{}\''); } catch (e) {}
   try { db.exec('ALTER TABLE profiles ADD COLUMN phone_verified INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN shipping_courier TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN shipping_awb TEXT'); } catch (e) {}
 }
 
 function initTables() {
@@ -183,6 +185,31 @@ function initTables() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+
+    CREATE TABLE IF NOT EXISTS carts (
+      id TEXT PRIMARY KEY,
+      store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+      customer_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS cart_items (
+      id TEXT PRIMARY KEY,
+      cart_id TEXT NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
+      product_id TEXT NOT NULL,
+      product_name TEXT,
+      product_image TEXT,
+      price INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      total INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_carts_store ON carts(store_id);
+    CREATE INDEX IF NOT EXISTS idx_carts_user ON carts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cart_items_cart ON cart_items(cart_id);
     CREATE TABLE IF NOT EXISTS store_settings (
       id TEXT PRIMARY KEY,
       store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,

@@ -6,6 +6,8 @@ const { checkStoreAccess } = require('../middleware/store.middleware');
 router.use(authenticate, checkStoreAccess);
 
 router.post('/', product.createProduct);
+router.post('/sync-shopee', product.syncShopee);
+router.delete('/sync-shopee', product.clearSyncedProducts);
 router.get('/', product.getProducts);
 router.get('/:productId', product.getProduct);
 router.get('/:productId/inventory', product.getProductInventory);

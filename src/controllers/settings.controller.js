@@ -19,9 +19,10 @@ const getSettings = async (req, res, next) => {
 const updateSettings = async (req, res, next) => {
   try {
     const db = getDb();
+    const now = new Date().toISOString();
     for (const [key, value] of Object.entries(req.body)) {
-      db.prepare('INSERT OR REPLACE INTO store_settings (id, store_id, key, value, updated_at) VALUES (COALESCE((SELECT id FROM store_settings WHERE store_id=? AND key=?), ?), ?, ?, ?, datetime("now"))')
-        .run(req.params.id, key, uuid(), req.params.id, key, String(value));
+      db.prepare(`INSERT OR REPLACE INTO store_settings (id, store_id, key, value, updated_at) VALUES (COALESCE((SELECT id FROM store_settings WHERE store_id=? AND key=?), ?), ?, ?, ?, ?)`)
+        .run(req.params.id, key, uuid(), req.params.id, key, String(value), now);
     }
     return success(res, null, 'Pengaturan diperbarui');
   } catch (err) { next(err); }
