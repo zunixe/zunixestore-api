@@ -1,6 +1,40 @@
 const { getDb } = require('../config/database');
 const { success, notFound } = require('../utils/response');
 
+/*
+ * Pengaturan toko yang boleh dibaca publik (storefront).
+ * Tabel store_settings juga menyimpan data internal admin (grup customer berisi ID customer,
+ * link afiliasi, template notifikasi, aturan pesanan, galeri media, dll.), jadi endpoint publik
+ * hanya mengirim key yang ada di daftar ini. Tambahkan key baru di sini HANYA jika memang
+ * perlu ditampilkan ke pengunjung toko.
+ */
+const PUBLIC_SETTING_KEYS = new Set([
+  // Tampilan & konten toko
+  'template', 'primary_color', 'secondary_color', 'footer_color',
+  'store_tagline', 'announcement_text', 'countdown_end',
+  'hero_title', 'hero_subtitle', 'hero_banner_url', 'home_banners', 'slider_images',
+  'about_content', 'contact_content', 'faq_content', 'faqs', 'blog_posts', 'custom_pages', 'testimonials',
+  'featured_product_id', 'featured_products', 'product_categories', 'product_bundles',
+  // Kontak & sosial
+  'contact_address', 'contact_email',
+  'social_facebook', 'social_instagram', 'social_tiktok', 'social_whatsapp',
+  // Checkout
+  'payment_methods', 'payment_cod', 'payment_ewallet', 'payment_transfer_bank', 'shipping_methods',
+  // Piksel pelacakan (memang dipasang di halaman publik)
+  'facebook_pixel_id', 'google_analytics_id', 'tiktok_pixel_id', 'google_ads_id',
+]);
+
+function getPublicSettings(db, storeId) {
+  const settings = {};
+  const rows = db.prepare('SELECT key, value FROM store_settings WHERE store_id = ?').all(storeId);
+  for (const row of rows) {
+    if (!PUBLIC_SETTING_KEYS.has(row.key)) continue;
+    try { settings[row.key] = JSON.parse(row.value); }
+    catch { settings[row.key] = row.value; }
+  }
+  return settings;
+}
+
 const resolveDomain = (req, res, next) => {
   try {
     const { domain } = req.query;
@@ -21,13 +55,7 @@ const resolveDomain = (req, res, next) => {
 
     if (!store) return notFound(res, 'Toko tidak ditemukan');
 
-    const settings = {};
-    const rows = db.prepare('SELECT key, value FROM store_settings WHERE store_id = ?').all(store.id);
-    for (const row of rows) {
-      try { settings[row.key] = JSON.parse(row.value); }
-      catch { settings[row.key] = row.value; }
-    }
-
+    const settings = getPublicSettings(db, store.id);
     return success(res, { store, settings });
   } catch (err) { next(err); }
 };
@@ -39,14 +67,7 @@ const getShopSettings = (req, res, next) => {
     const store = db.prepare('SELECT id FROM stores WHERE slug = ? AND status = ?').get(slug, 'active');
     if (!store) return notFound(res, 'Toko tidak ditemukan');
 
-    const settings = {};
-    const rows = db.prepare('SELECT key, value FROM store_settings WHERE store_id = ?').all(store.id);
-    for (const row of rows) {
-      try { settings[row.key] = JSON.parse(row.value); }
-      catch { settings[row.key] = row.value; }
-    }
-
-    return success(res, settings);
+    return success(res, getPublicSettings(db, store.id));
   } catch (err) { next(err); }
 };
 
