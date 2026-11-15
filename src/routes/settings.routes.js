@@ -7,6 +7,8 @@ router.use(authenticate, checkStoreAccess);
 
 router.get('/', settings.getSettings);
 router.put('/', settings.updateSettings);
+router.get('/wallet', settings.getWallet);
+router.get('/coins', settings.getWallet);
 router.get('/:key', settings.getSetting);
 
 module.exports = router;

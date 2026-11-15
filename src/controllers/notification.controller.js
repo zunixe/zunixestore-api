@@ -35,4 +35,32 @@ const updatePrefs = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getPrefs, updatePrefs };
+// Notifikasi level toko (bell di Topbar admin) — e.g. Stok Menipis dari pesanan.
+const getStoreNotifications = (req, res, next) => {
+  try {
+    const db = getDb();
+    const items = db.prepare(
+      'SELECT id, type, title, body, ref_id, read_at, created_at FROM notifications WHERE store_id = ? ORDER BY created_at DESC LIMIT 50'
+    ).all(req.params.id);
+    const unread = db.prepare('SELECT COUNT(*) c FROM notifications WHERE store_id = ? AND read_at IS NULL').get(req.params.id).c;
+    return success(res, { items, unread });
+  } catch (err) { next(err); }
+};
+
+const markNotificationRead = (req, res, next) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND store_id = ?").run(req.params.notifId, req.params.id);
+    return success(res, {});
+  } catch (err) { next(err); }
+};
+
+const markAllNotificationsRead = (req, res, next) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE store_id = ? AND read_at IS NULL").run(req.params.id);
+    return success(res, {});
+  } catch (err) { next(err); }
+};
+
+module.exports = { getPrefs, updatePrefs, getStoreNotifications, markNotificationRead, markAllNotificationsRead };

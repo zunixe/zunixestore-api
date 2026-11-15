@@ -8,6 +8,13 @@ const createProduct = async (req, res, next) => {
     const { sku, name, description, price, stock, status, image_urls, category } = req.body;
     if (!name || price === undefined) return error(res, 'Nama dan harga wajib diisi', 400);
     const db = getDb();
+    // Kuota produk sesuai paket (Plugo: Lite 30, Basic 100, Business 500, Enterprise ∞).
+    const { PLANS, getPlanOf } = require('./subscription.controller');
+    const limit = PLANS[getPlanOf(db, req.params.id)].quota.products;
+    if (limit !== null) {
+      const used = db.prepare('SELECT COUNT(*) c FROM products WHERE store_id = ?').get(req.params.id).c;
+      if (used >= limit) return error(res, `Kuota produk paket kamu habis (${used}/${limit}). Upgrade paket untuk menambah produk.`, 403);
+    }
     const id = uuid();
     db.prepare(`INSERT INTO products (id, store_id, sku, name, description, price, stock, status, image_urls, category) VALUES (?,?,?,?,?,?,?,?,?,?)`)
       .run(id, req.params.id, sku || null, name, description || null, price, stock || 0, status || 'published', JSON.stringify(image_urls || []), category || null);

@@ -8,6 +8,8 @@ router.get('/plans', subscription.getPlans);
 router.use(authenticate, checkStoreAccess);
 
 router.get('/', subscription.getSubscription);
+router.get('/usage', subscription.getUsage);
+router.get('/billing', subscription.getBillingHistory);
 router.post('/', subscription.createSubscription);
 router.put('/cancel', subscription.cancelSubscription);
 

@@ -26,6 +26,24 @@ function migrate() {
   try { db.exec('ALTER TABLE profiles ADD COLUMN phone_verified INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE orders ADD COLUMN shipping_courier TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE orders ADD COLUMN shipping_awb TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN payment_method TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN paid_at TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN discount_code TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN discount_amount INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN extra_fee INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN is_dropship INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN shipper_name TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN shipper_phone TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN checkout_answer TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN shipping_service TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN destination_postal_code TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN destination_area_id TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE order_items ADD COLUMN fulfilled INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE discounts ADD COLUMN product_ids TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE customers ADD COLUMN birthdate TEXT'); } catch (e) {}
+  // Tema = template storefront (nama folder di ZunixeStore-Frontend/src/templates).
+  try { db.exec('ALTER TABLE themes ADD COLUMN template TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE themes ADD COLUMN description TEXT'); } catch (e) {}
 }
 
 function initTables() {
@@ -210,6 +228,38 @@ function initTables() {
     CREATE INDEX IF NOT EXISTS idx_carts_store ON carts(store_id);
     CREATE INDEX IF NOT EXISTS idx_carts_user ON carts(user_id);
     CREATE INDEX IF NOT EXISTS idx_cart_items_cart ON cart_items(cart_id);
+    CREATE TABLE IF NOT EXISTS reviews (
+      id TEXT PRIMARY KEY,
+      store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      product_id TEXT,
+      product_name TEXT,
+      customer_name TEXT,
+      rating INTEGER NOT NULL,
+      text TEXT,
+      aspects TEXT,
+      reply TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      ref_id TEXT,
+      read_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_store ON notifications(store_id);
+    CREATE TABLE IF NOT EXISTS order_events (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'event',
+      message TEXT NOT NULL,
+      actor TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(order_id);
     CREATE TABLE IF NOT EXISTS store_settings (
       id TEXT PRIMARY KEY,
       store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -235,6 +285,23 @@ function seedData() {
     insert.run('t2', 'Dark Mode', '{"primary_color":"#6366f1","bg_color":"#1e1e2e","sidebar_color":"#181825"}', 0);
     insert.run('t3', 'Minimal', '{"primary_color":"#10b981","bg_color":"#fafafa","sidebar_color":"#ffffff"}', 0);
   }
+
+  // Katalog template storefront. Ditambahkan sekali; baris yang sudah ada tidak diubah.
+  const tpl = db.prepare(
+    'INSERT OR IGNORE INTO themes (id, name, config, preview_url, template, description, is_active) VALUES (?, ?, ?, ?, ?, ?, 0)'
+  );
+  tpl.run(
+    'tpl-basic-shop', 'Basic Shop',
+    '{"primary_color":"#DB0028","secondary_color":"#0C0103","footer_color":"#D62043"}',
+    '/uploads/templates/basic-shop.jpg', 'basic-shop',
+    'Toko serba ada: banner geser, promo hitung mundur, Best Seller, Produk Terbaru, dan FAQ.'
+  );
+  tpl.run(
+    'tpl-default', 'Default Design',
+    '{"primary_color":"#DB0028","secondary_color":"#0C0103","footer_color":"#D62043"}',
+    '/uploads/templates/default.jpg', 'default',
+    'Desain dasar ZunixeStore.'
+  );
 }
 
 function uuid() {
