@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { getDb } = require('../config/database');
-const { unauthorized } = require('../utils/response');
+const { unauthorized, forbidden } = require('../utils/response');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zunixestore-secret-key-2026';
 
@@ -15,6 +15,7 @@ const authenticate = (req, res, next) => {
     const db = getDb();
     const user = db.prepare('SELECT id, email, full_name, role FROM profiles WHERE id = ?').get(decoded.sub);
     if (!user) return unauthorized(res, 'User tidak ditemukan');
+    if (user.role === 'customer') return forbidden(res, 'Akun pelanggan tidak memiliki akses admin');
 
     req.user = user;
     next();

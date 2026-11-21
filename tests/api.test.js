@@ -398,3 +398,40 @@ describe('Theme', () => {
     expect(act.body.status).toBe('success');
   });
 });
+
+describe('Customer account & keamanan admin', () => {
+  const CEMAIL = 'buyer@toko.id';
+  it('register customer → muncul di customers toko + ditolak di API admin', async () => {
+    const r = await request(app).post('/api/public/auth/register')
+      .set('Origin', 'http://toko-vitest.zunixestore.com')
+      .send({ full_name: 'Buyer', email: CEMAIL, phone: '0812', password: 'buyer123' });
+    expect(r.status).toBe(201);
+    const cToken = r.body.data.token;
+    // Origin → slug toko → buyer tercatat di daftar customer
+    const list = await auth(request(app).get(`/api/stores/${storeId}/customers`));
+    const items = list.body.data.items || list.body.data;
+    expect(items.some((c) => c.email === CEMAIL)).toBe(true);
+    // token customer tidak bisa akses API admin
+    const denied = await request(app).get('/api/stores').set('Authorization', `Bearer ${cToken}`);
+    expect(denied.status).toBe(403);
+    // login admin pakai akun customer → 401
+    const bad = await request(app).post('/api/auth/login').send({ email: CEMAIL, password: 'buyer123' });
+    expect(bad.status).toBe(401);
+  });
+  it('login customer juga mensinkron ke customers toko', async () => {
+    const r = await request(app).post('/api/public/auth/login')
+      .set('Origin', 'http://toko-vitest.zunixestore.com')
+      .send({ email: CEMAIL, password: 'buyer123' });
+    expect(r.status).toBe(200);
+    const list = await auth(request(app).get(`/api/stores/${storeId}/customers`));
+    const items = list.body.data.items || list.body.data;
+    expect(items.filter((c) => c.email === CEMAIL).length).toBe(1);
+  });
+  it('user lain tidak bisa baca/update/hapus toko orang lain (IDOR)', async () => {
+    const other = await request(app).post('/api/auth/register').send({ full_name: 'Lain', email: 'lain@zunixe.id', password: 'x123456' });
+    const t2 = other.body.data.token;
+    expect((await request(app).get(`/api/stores/${storeId}`).set('Authorization', `Bearer ${t2}`)).status).toBe(403);
+    expect((await request(app).put(`/api/stores/${storeId}`).set('Authorization', `Bearer ${t2}`).send({ name: 'HACK' })).status).toBe(403);
+    expect((await request(app).delete(`/api/stores/${storeId}`).set('Authorization', `Bearer ${t2}`)).status).toBe(403);
+  });
+});

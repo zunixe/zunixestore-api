@@ -43,6 +43,9 @@ const login = async (req, res, next) => {
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       return unauthorized(res, 'Email atau password salah');
     }
+    if (user.role === 'customer') {
+      return unauthorized(res, 'Akun ini adalah akun pelanggan toko. Silakan daftar akun pemilik toko dengan email lain.');
+    }
 
     const { password_hash, ...profile } = user;
     const token = generateToken(profile);
@@ -85,6 +88,85 @@ const updateProfile = async (req, res, next) => {
 
     const updated = db.prepare('SELECT id, email, full_name, avatar_url, phone, role, created_at FROM profiles WHERE id = ?').get(req.user.id);
     return success(res, updated, 'Profile updated');
+  } catch (err) { next(err); }
+};
+
+const provisionOAuthUser = (db, { email, full_name, avatar_url }) => {
+  let user = db.prepare('SELECT * FROM profiles WHERE email = ?').get(email);
+  if (!user) {
+    const id = uuid();
+    db.prepare('INSERT INTO profiles (id, email, full_name, avatar_url, role, password_hash) VALUES (?, ?, ?, ?, ?, NULL)')
+      .run(id, email, full_name || null, avatar_url || null, 'owner');
+    user = db.prepare('SELECT * FROM profiles WHERE id = ?').get(id);
+  } else if (avatar_url && !user.avatar_url) {
+    db.prepare('UPDATE profiles SET avatar_url = ? WHERE id = ?').run(avatar_url, user.id);
+    user.avatar_url = avatar_url;
+  }
+  const { password_hash, ...profile } = user;
+  return profile;
+};
+
+const googleLogin = async (req, res, next) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return badRequest(res, 'Credential Google wajib diisi');
+    if (!process.env.GOOGLE_CLIENT_ID) return error(res, 'Google login belum dikonfigurasi', 500);
+
+    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    const info = await r.json();
+    if (!r.ok || info.aud !== process.env.GOOGLE_CLIENT_ID || info.email_verified !== 'true' || !info.email) {
+      return unauthorized(res, 'Login Google gagal');
+    }
+
+    const db = getDb();
+    const profile = provisionOAuthUser(db, {
+      email: info.email,
+      full_name: info.name,
+      avatar_url: info.picture,
+    });
+    if (profile.role === 'customer') {
+      return unauthorized(res, 'Akun ini adalah akun pelanggan toko. Silakan daftar akun pemilik toko dengan email lain.');
+    }
+    const token = generateToken(profile);
+    return success(res, { user: profile, token }, 'Login berhasil');
+  } catch (err) { next(err); }
+};
+
+const facebookLogin = async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+    if (!accessToken) return badRequest(res, 'Access token Facebook wajib diisi');
+    if (!process.env.FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET) {
+      return error(res, 'Facebook login belum dikonfigurasi', 500);
+    }
+
+    const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`
+    );
+    const debug = await debugRes.json();
+    const data = debug.data;
+    if (!data?.is_valid || String(data.app_id) !== String(process.env.FACEBOOK_APP_ID)) {
+      return unauthorized(res, 'Login Facebook gagal');
+    }
+
+    const meRes = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${encodeURIComponent(accessToken)}`
+    );
+    const me = await meRes.json();
+    if (!me.email) return badRequest(res, 'Email Facebook tidak tersedia, izinkan akses email');
+
+    const db = getDb();
+    const profile = provisionOAuthUser(db, {
+      email: me.email,
+      full_name: me.name,
+      avatar_url: me.picture?.data?.url,
+    });
+    if (profile.role === 'customer') {
+      return unauthorized(res, 'Akun ini adalah akun pelanggan toko. Silakan daftar akun pemilik toko dengan email lain.');
+    }
+    const token = generateToken(profile);
+    return success(res, { user: profile, token }, 'Login berhasil');
   } catch (err) { next(err); }
 };
 
@@ -147,4 +229,4 @@ const deleteAccount = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { register, login, refresh, logout, me, updateProfile, setPin, verifyPin, deleteAccount };
+module.exports = { register, login, googleLogin, facebookLogin, refresh, logout, me, updateProfile, setPin, verifyPin, deleteAccount };
