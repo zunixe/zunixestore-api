@@ -108,7 +108,19 @@ db.backup(backupFile).then(() => {
       VALUES (@id, @store, @sku, @name, @description, @price, 100, 'published', @images, @category, @created, datetime('now'))
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, price=excluded.price, stock=excluded.stock,
         status='published', image_urls=excluded.image_urls, category=excluded.category, created_at=excluded.created_at, updated_at=datetime('now')`);
+    const getExisting = db.prepare('SELECT price, description FROM products WHERE id = ?');
     for (const r of rows) {
+      // Harga yang sudah disamakan ke Shopee (scripts/apply-shopee-prices.py) jangan ditimpa harga mockup.
+      const ex = getExisting.get(r.id);
+      let prevDesc = {};
+      try { prevDesc = JSON.parse((ex && ex.description) || '{}'); } catch { /* abaikan */ }
+      if (ex && prevDesc.price_source === 'shopee') {
+        r.price = ex.price;
+        delete r.description.retail_price;
+        if (prevDesc.retail_price) r.description.retail_price = prevDesc.retail_price;
+        r.description.shopee_item_id = prevDesc.shopee_item_id;
+        r.description.price_source = 'shopee';
+      }
       up.run({ id: r.id, store: STORE_ID, sku: r.pid || null, name: r.name, description: JSON.stringify(r.description), price: r.price,
         images: JSON.stringify(r.images), category: r.category, created: createdAt(r) });
     }
