@@ -1,5 +1,6 @@
 const { getDb, uuid } = require('../config/database');
 const { success, created, notFound, badRequest } = require('../utils/response');
+const { attachPromos, quoteAutoDiscount } = require('../utils/autoDiscount');
 
 /*
  * Pengaturan toko yang boleh dibaca publik (storefront).
@@ -93,7 +94,7 @@ const getShopProducts = (req, res, next) => {
     let where = "WHERE p.store_id = ? AND p.status = 'published'";
     const params = [store.id];
 
-    if (search) { where += ' AND p.name LIKE ?'; params.push(`%${search}%`); }
+    if (search) { where += ' AND (p.name LIKE ? OR p.sku LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
     if (category) {
       // Boleh lebih dari satu kategori, dipisah koma (filter "Kategori" di storefront).
       const cats = String(category).split(',').map((c) => c.trim()).filter(Boolean).slice(0, 50);
@@ -171,6 +172,8 @@ const getShopProducts = (req, res, next) => {
       try { item.image_urls = JSON.parse(item.image_urls || '[]'); } catch { item.image_urls = []; }
       try { item.description = JSON.parse(item.description || '{}'); } catch { item.description = {}; }
     }
+    // Diskon otomatis (tanpa kode) → harga setelah diskon / label "Extra X%".
+    attachPromos(db, store.id, items);
 
     return success(res, { items, total, page: Number(page), limit: Number(limit), categories });
   } catch (err) { next(err); }
@@ -208,6 +211,7 @@ const getShopProduct = (req, res, next) => {
         };
       } catch { r.description = {}; }
     }
+    attachPromos(db, store.id, [product, ...related]);
 
     return success(res, { product, related });
   } catch (err) { next(err); }
@@ -299,4 +303,23 @@ const createReview = (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getProductReviews, createReview, validateDiscount, resolveDomain, getShopSettings, getShopProducts, getShopProduct, getShopContent };
+/*
+ * Potongan diskon otomatis untuk isi keranjang (dipakai halaman keranjang & checkout).
+ * Harga diambil dari database, bukan dari browser. items = [{ product_id, quantity }].
+ */
+const quoteAutoDiscountForCart = (req, res, next) => {
+  try {
+    const db = getDb();
+    const store = db.prepare('SELECT id FROM stores WHERE slug = ? AND status = ?').get(req.params.slug, 'active');
+    if (!store) return notFound(res, 'Toko tidak ditemukan');
+    const raw = (() => { try { const a = JSON.parse(String(req.query.items || '[]')); return Array.isArray(a) ? a.slice(0, 200) : []; } catch { return []; } })();
+    const getP = db.prepare("SELECT id, price FROM products WHERE id = ? AND store_id = ? AND status = 'published'");
+    const items = raw.map((i) => {
+      const p = getP.get(String(i.product_id || ''), store.id);
+      return p ? { product_id: p.id, total: p.price * Math.max(1, Math.min(9999, Number(i.quantity) || 1)) } : null;
+    }).filter(Boolean);
+    return success(res, quoteAutoDiscount(db, store.id, items));
+  } catch (err) { next(err); }
+};
+
+module.exports = { quoteAutoDiscountForCart, getProductReviews, createReview, validateDiscount, resolveDomain, getShopSettings, getShopProducts, getShopProduct, getShopContent };

@@ -1,6 +1,7 @@
 const { getDb, uuid } = require('../config/database');
 const { success, created, badRequest, notFound } = require('../utils/response');
 const { decrementStock, restoreStock, readPref, sweepOrderAutomation } = require('../services/stockService');
+const { quoteAutoDiscount } = require('../utils/autoDiscount');
 
 const createPublicOrder = (req, res, next) => {
   try {
@@ -27,10 +28,13 @@ const createPublicOrder = (req, res, next) => {
       if (!product) return badRequest(res, `Produk ${item.product_id} tidak ditemukan`);
 
       const qty = Math.max(1, Number(item.quantity) || 1);
-      const price = Number(item.price) || product.price;
+      const pdesc = (() => { try { return JSON.parse(product.description || '{}'); } catch { return {}; } })();
+      // Harga dari database — harga kiriman browser hanya dipakai bila sama dengan harga salah satu varian.
+      const variantPrices = (Array.isArray(pdesc.models) ? pdesc.models : []).map((m) => Number(m && m.price)).filter((v) => v > 0);
+      const sentPrice = Number(item.price);
+      const price = sentPrice > 0 && variantPrices.includes(sentPrice) ? sentPrice : product.price;
       const itemTotal = price * qty;
       subtotal += itemTotal;
-      const pdesc = (() => { try { return JSON.parse(product.description || '{}'); } catch { return {}; } })();
 
       orderItems.push({
         product_id: product.id,
@@ -89,6 +93,10 @@ const createPublicOrder = (req, res, next) => {
         : Math.min(Number(d.value) || 0, eligibleBase);
       usedCode = d.code;
     }
+    // Diskon otomatis (tanpa kode, seperti "Discount New Member" di Plugo) — ditambahkan ke potongan voucher.
+    const auto = quoteAutoDiscount(db, store.id, orderItems);
+    const autoAmount = auto ? Math.min(auto.discount_amount, Math.max(0, subtotal - discountAmount)) : 0;
+    discountAmount += autoAmount;
     // Biaya Tambahan Khusus (Pengaturan Pesanan) — persen dari subtotal setelah diskon.
     let extraFee = 0;
     if (oprefs.extra_fee_enabled && Number(oprefs.extra_fee_amount) > 0) {
@@ -115,6 +123,13 @@ const createPublicOrder = (req, res, next) => {
         .run(uuid(), orderId, 'created', `Order dimasukkan dari toko online (${customer_name})`, 'customer');
     } catch { /* order_events opsional */ }
     if (usedCode) db.prepare('UPDATE discounts SET usage_count = usage_count + 1 WHERE store_id = ? AND code = ?').run(store.id, usedCode);
+    if (autoAmount > 0) {
+      db.prepare('UPDATE discounts SET usage_count = usage_count + 1 WHERE id = ?').run(auto.id);
+      try {
+        db.prepare('INSERT INTO order_events (id, order_id, type, message, actor) VALUES (?,?,?,?,?)')
+          .run(uuid(), orderId, 'discount', `Diskon otomatis ${auto.name || (auto.type === 'percentage' ? `${auto.value}%` : '')}: -Rp ${autoAmount.toLocaleString('id-ID')}`, 'system');
+      } catch { /* order_events opsional */ }
+    }
 
     const insertItem = db.prepare(
       'INSERT INTO order_items (id, order_id, product_id, product_name, quantity, price, total) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -144,6 +159,7 @@ const createPublicOrder = (req, res, next) => {
       shipping_cost: Number(shipping_cost),
       discount_amount: discountAmount,
       discount_code: usedCode,
+      auto_discount: autoAmount > 0 ? { id: auto.id, name: auto.name, amount: autoAmount } : null,
     });
   } catch (err) { next(err); }
 };

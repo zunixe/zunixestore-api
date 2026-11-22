@@ -40,6 +40,8 @@ function migrate() {
   try { db.exec('ALTER TABLE orders ADD COLUMN destination_area_id TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE order_items ADD COLUMN fulfilled INTEGER DEFAULT 0'); } catch (e) {}
   try { db.exec('ALTER TABLE discounts ADD COLUMN product_ids TEXT'); } catch (e) {}
+  // Nama diskon (mis. "Discount New Member"); diskon tanpa kode berlaku otomatis.
+  try { db.exec('ALTER TABLE discounts ADD COLUMN name TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE customers ADD COLUMN birthdate TEXT'); } catch (e) {}
   // Tema = template storefront (nama folder di ZunixeStore-Frontend/src/templates).
   try { db.exec('ALTER TABLE themes ADD COLUMN template TEXT'); } catch (e) {}
